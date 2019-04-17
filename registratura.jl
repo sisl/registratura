@@ -376,7 +376,7 @@ function addpkg(regdir::String, pkgdir::String)
     end
 
     # create registry record
-    prjpath = joinpath(regpath, string(prjname[1]), prjname)
+    prjpath = joinpath(regpath, string(prjname[1])*"/"*prjname)
     # isdir(prjpath) && error("Package `$(prjname)` is already added to the registry `$(reg[NAME])`")
     mkpath(prjpath)
 
@@ -430,7 +430,7 @@ function addpkg(regdir::String, pkgdir::String)
     end
     reg[PKGS][prjid] = Dict{String, Any}()
     reg[PKGS][prjid]["name"] = prjname
-    reg[PKGS][prjid]["path"] = joinpath(string(prjname[1]), prjname)
+    reg[PKGS][prjid]["path"] = string(prjname[1])*"/"*prjname
     saveregistryfile(joinpath(regpath, REGISTRY_FILE), reg)
 
     # commit changes
