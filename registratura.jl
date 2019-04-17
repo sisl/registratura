@@ -19,7 +19,6 @@ const PKGS = "packages"
 const COMPAT = "compat"
 const PROJECT_FILE  = "Project.toml"
 const REGISTRY_FILE = "Registry.toml"
-const REGISTRATURA_FILE  = "Registratura.toml"
 const USER_DEPO = first(Pkg.depots())
 
 function isrepo(pkgdir::String)
@@ -36,9 +35,7 @@ function readregistry(regpath::String)
     regfile = joinpath(regpath, REGISTRY_FILE)
     !isfile(regfile) && error("Registry configuration is not found in $regpath")
     reg = TOML.parsefile(regfile)
-    registrafile = joinpath(regpath, REGISTRATURA_FILE)
-    registra = isfile(registrafile) ? TOML.parsefile(registrafile) : nothing
-    return TOML.parsefile(regfile), registra
+    return TOML.parsefile(regfile)
 end
 
 function readproject(pkgdir::String)
@@ -73,12 +70,11 @@ function genversions(pkgdir)
         tags = LibGit2.tag_list(repo)
         for tag in tags
             tagref = LibGit2.GitReference(repo, "refs/tags/$tag")
-            try
-                v = string(VersionNumber(tag))
-                versions[v] = Dict("git-tree-sha1"=>string(LibGit2.GitHash(tagref)))
-            catch
-                @debug "Skip" tag=tag
-            end
+            tree = LibGit2.peel(LibGit2.GitTree, tagref)
+            treesha = LibGit2.GitHash(tree)
+            v = string(VersionNumber(tag))
+            versions[v] = Dict("git-tree-sha1" => string(treesha))
+            println("Adding version $v")
         end
     end
     return versions
@@ -113,12 +109,18 @@ function gendependenciesreq(pkgdir::String, versions::Dict{T,Any}) where T<:Abst
     LibGit2.with(LibGit2.GitRepo(pkgdir)) do repo
         for (ver, hash) in verhash
             LibGit2.with(LibGit2.GitTree(repo, "$hash^{tree}")) do tree
-                cont = LibGit2.content(tree["REQUIRE"])
-                for req in split(cont, '\n', keepempty=false)
-                    dep = first(split(req, ' '))
-                    #dep == "julia" && continue
-                    !haskey(depvers, dep) && setindex!(depvers, VersionNumber[], dep)
-                    push!(depvers[dep], VersionNumber(ver))
+                try
+                    cont = LibGit2.content(tree["REQUIRE"])
+                    for req in split(cont, '\n', keepempty=false)
+                        dep = first(split(req, ' '))
+                        #dep == "julia" && continue
+                        !haskey(depvers, dep) && setindex!(depvers, VersionNumber[], dep)
+                        push!(depvers[dep], VersionNumber(ver))
+                    end
+                catch y
+                    if !isa(y, KeyError)
+                        rethrow(y)
+                    end
                 end
             end
         end
@@ -162,8 +164,10 @@ function gendependencies(pkgdir::String, versions::Dict{T,Any}) where T<:Abstrac
                     cont = LibGit2.content(tree["Project.toml"])
                     prj = TOML.parse(cont)
                     depvers[ver] = prj[DEPS]
-                catch
-                    @debug "No project" ver hash
+                catch y
+                    if !isa(y, KeyError)
+                        rethrow(y)
+                    end
                 end
             end
         end
@@ -202,14 +206,15 @@ function gencompatibility(pkgdir::String, versions::Dict{T,Any}) where T<:Abstra
     verhash = [k => versions[k]["git-tree-sha1"] for k in sort(collect(keys(versions)))]
     LibGit2.with(LibGit2.GitRepo(pkgdir)) do repo
         for (ver, hash) in verhash
-            # println(ver => hash)
             LibGit2.with(LibGit2.GitTree(repo, "$hash^{tree}")) do tree
                 try
                     prjfile = LibGit2.content(tree["Project.toml"])
                     prj = TOML.parse(prjfile)
                     compatvers[ver] = prj[COMPAT]
-                catch
-                    @debug "No project" ver hash
+                catch y
+                    if !isa(y, KeyError)
+                        rethrow(y)
+                    end
                 end
             end
         end
@@ -358,7 +363,7 @@ function addpkg(regdir::String, pkgdir::String)
     regpath, regname = getregistrypath(regdir)
 
     # load registry & package config
-    reg, registra = readregistry(regpath)
+    reg = readregistry(regpath)
     prj = readproject(pkgdir)
     prjname = prj[NAME]
     prjid = prj[UUID]
@@ -371,8 +376,8 @@ function addpkg(regdir::String, pkgdir::String)
     end
 
     # create registry record
-    prjpath = joinpath(regpath, prjname)
-    isdir(prjpath) && error("Package `$(prjname)` is already added to the registry `$(reg[NAME])`")
+    prjpath = joinpath(regpath, string(prjname[1]), prjname)
+    # isdir(prjpath) && error("Package `$(prjname)` is already added to the registry `$(reg[NAME])`")
     mkpath(prjpath)
 
     # write package description
@@ -425,19 +430,8 @@ function addpkg(regdir::String, pkgdir::String)
     end
     reg[PKGS][prjid] = Dict{String, Any}()
     reg[PKGS][prjid]["name"] = prjname
-    reg[PKGS][prjid]["path"] = prjname
+    reg[PKGS][prjid]["path"] = joinpath(string(prjname[1]), prjname)
     saveregistryfile(joinpath(regpath, REGISTRY_FILE), reg)
-
-    # write package record to Registratura config
-    if registra === nothing
-        registra = Dict{String,String}()
-    end
-    if !haskey(registra, prjid)
-        writeto(joinpath(regpath, REGISTRATURA_FILE)) do io
-            registra[prjid] = abspath(pkgdir)
-            TOML.print(io, registra)
-        end
-    end
 
     # commit changes
     repo = LibGit2.init(regpath)
@@ -456,11 +450,11 @@ function updreg(regdir::String)
     regpath, regname = getregistrypath(regdir)
 
     # load registry & package config
-    reg, registra = readregistry(regpath)
+    reg = readregistry(regpath)
 
     # look for all packages in registratura
-    for prjid in keys(registra)
-        prjpath = registra[prjid]
+    for prjid in keys(reg["packages"])
+        prjpath = reg[prjid]
         prj = readproject(prjpath)
         prjname = prj[NAME]
 
