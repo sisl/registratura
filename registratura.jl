@@ -69,8 +69,22 @@ function genversions(pkgdir)
     LibGit2.with(LibGit2.GitRepo(pkgdir)) do repo
         tags = LibGit2.tag_list(repo)
         for tag in tags
+            ignore_version = false
             tagref = LibGit2.GitReference(repo, "refs/tags/$tag")
             tree = LibGit2.peel(LibGit2.GitTree, tagref)
+            try
+                cont = LibGit2.content(tree["Project.toml"])
+            catch ex
+                if !isa(ex, KeyError)
+                    rethrow(ex)
+                else
+                    ignore_version = true
+                end
+            end
+            if ignore_version 
+                println("Ignoring version $tag, no Project.toml")
+                continue
+            end
             treesha = LibGit2.GitHash(tree)
             v = string(VersionNumber(tag))
             versions[v] = Dict("git-tree-sha1" => string(treesha))
@@ -469,7 +483,7 @@ function addpkg(regdir::String, pkgdir::String)
         LibGit2.add!(repo, string(prjname[1])*"/"*prjname)
         LibGit2.add!(repo, REGISTRY_FILE)
         LibGit2.commit(repo, "Added package $prjname to the registry.")
-        LibGit2.push(repo, remote="origin")
+        LibGit2.push(repo, remote="origin", refspecs=["refs/heads/master"])
     finally
         close(repo)
     end
