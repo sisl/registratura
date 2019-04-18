@@ -376,14 +376,13 @@ end
 
 function addjuliavers!(compats, vers)
     svers = sort!(collect(keys(vers)))
-    # if no compatibility information exists
-    # set julia compatibility versin using the current version of julia compiler
+    # if no compatibility information exists all versions are possible
     lastver = svers[end]
     if !haskey(compats, lastver)
         compats[lastver] = Dict{String,Any}()
     end
     if !haskey(compats[lastver], "julia")
-        compats[lastver]["julia"] = string(Pkg.Types.semver_spec("^$VERSION"))
+        compats[lastver]["julia"] = "*"
     end
 end
 
