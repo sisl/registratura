@@ -245,6 +245,9 @@ function parse_commandline()
         "add"
             help = "add a package to a registry"
             action = :command
+        "addurl"
+            help = "add a package to a registry from url"
+            action = :command
     end
 
     @add_arg_table s["init"] begin
@@ -260,6 +263,17 @@ function parse_commandline()
             help = "a registry location"
             required = true
         "pkg"
+            arg_type = String
+            help = "a package location"
+            required = true
+    end
+
+    @add_arg_table s["addurl"] begin
+        "registry"
+            arg_type = String
+            help = "a registry location"
+            required = true
+        "pkgurl"
             arg_type = String
             help = "a package location"
             required = true
@@ -357,6 +371,22 @@ function addjuliavers!(compats, vers)
     if !haskey(compats[lastver], "julia")
         compats[lastver]["julia"] = string(Pkg.Types.semver_spec("^$VERSION"))
     end
+end
+
+function addurl(regdir::String, pkgurl::String)
+    # clone to tempdir first
+    tmp = mktempdir()
+    Base.shred!(LibGit2.CachedCredentials()) do creds
+        LibGit2.with(Pkg.GitTools.clone(pkgurl, tmp; header = "Pkg from $(repr(url))", credentials = creds)) do repo
+        end
+    end
+    
+    # verify it looks like a package
+    if !isfile(joinpath(tmp, "Project.toml"))
+        Pkg.Types.pkgerror("no `Project.toml` file in cloned package")
+    end
+    
+    addpkg(regdir, tmp)
 end
 
 function addpkg(regdir::String, pkgdir::String)
@@ -457,6 +487,9 @@ function main()
     elseif cmd == "add"
         addargs = args["add"]
         addpkg(addargs["registry"], addargs["pkg"])
+    elseif cmd == "addurl"
+        addargs = args["addurl"]
+        addurl(addargs["registry"], addargs["pkgurl"])
     elseif cmd == "update"
         updreg(args["update"]["registry"])
     else
@@ -465,4 +498,3 @@ function main()
 end
 
 !isinteractive() && main()
-
