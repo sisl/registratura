@@ -294,7 +294,7 @@ function writeto(f, fpath)
     end
 end
 
-saveregistryfile(path, reg) = writeto(io->TOML.print(io, reg), path)
+saveregistryfile(path, reg) = writeto(io->TOML.print(io, reg, sorted=true), path)
 
 function init(path::String)
     regpath, regname = getregistrypath(path)
@@ -408,14 +408,14 @@ function addpkg(regdir::String, pkgdir::String)
 
     # write package versions
     writeto(joinpath(prjpath, "Versions.toml")) do io
-        TOML.print(io, vers)
+        TOML.print(io, vers, sorted=true)
     end
 
     # write compatibility reqs
     writeto(joinpath(prjpath, "Compat.toml")) do io
         compats = gencompatibility(pkgdir, vers)
         addjuliavers!(compats, vers)
-        TOML.print(io, compactcompats(compats))
+        TOML.print(io, compactcompats(compats), sorted=true)
     end
 
     # write dependencies
@@ -436,75 +436,15 @@ function addpkg(regdir::String, pkgdir::String)
     # commit changes
     repo = LibGit2.init(regpath)
     try
-        LibGit2.add!(repo, prjname)
+        LibGit2.add!(repo, string(prjname[1])*"/"*prjname)
         LibGit2.add!(repo, REGISTRY_FILE)
         LibGit2.commit(repo, "Added package $prjname to the registry.")
+        LibGit2.push(repo, remote="origin")
     finally
         close(repo)
     end
 
     println("$prjname added to registry in $regpath")
-end
-
-function updreg(regdir::String)
-    regpath, regname = getregistrypath(regdir)
-
-    # load registry & package config
-    reg = readregistry(regpath)
-
-    # look for all packages in registratura
-    for prjid in keys(reg["packages"])
-        prjpath = reg[prjid]
-        prj = readproject(prjpath)
-        prjname = prj[NAME]
-
-        if haskey(reg["packages"], prjid)
-            # load version info from package and registry
-            pkgpath = joinpath(regpath, prjname)
-            pkgvers = TOML.parsefile(joinpath(pkgpath, "Versions.toml"))
-            prjvers = genversions(prjpath)
-
-            # if there is a version difference, begin update process
-            newvers = symdiff(keys(pkgvers), keys(prjvers))
-            if length(newvers) > 0
-                # write down a new set of versions
-                pkgvers = prjvers
-                writeto(joinpath(pkgpath, "Versions.toml")) do io
-                    TOML.print(io, pkgvers)
-                end
-
-                # get new versions
-                vers =  Dict{String,Any}(v=>prjvers[v] for v in newvers)
-
-                # write compatibility reqs
-                pkgcompats = TOML.parsefile(joinpath(pkgpath, "Compat.toml"))
-                writeto(joinpath(pkgpath, "Compat.toml")) do io
-                    compats = gencompatibility(prjpath, vers)
-                    addjuliavers!(compats, vers)
-                    merge!(compats, pkgcompats)
-                    TOML.print(io, compactcompats(compats))
-                end
-
-                # write dependencies
-                pkgdeps = TOML.parsefile(joinpath(pkgpath, "Deps.toml"))
-                writeto(joinpath(pkgpath, "Deps.toml")) do io
-                    deps = gendependencies(prjpath, vers)
-                    merge!(deps, pkgdeps)
-                    TOML.print(io, compactdeps(deps))
-                end
-
-                # commit changes
-                repo = LibGit2.init(regpath)
-                try
-                    LibGit2.add!(repo, prjname)
-                    LibGit2.commit(repo, "Updated package $prjname in the registry.")
-                finally
-                    close(repo)
-                end
-                println("$prjname is updated in the registry $regpath")
-            end
-        end
-    end
 end
 
 function main()
