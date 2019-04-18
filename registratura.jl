@@ -403,6 +403,7 @@ function addurl(regdir::String, pkgurl::String)
 end
 
 function addpkg(regdir::String, pkgdir::String)
+    Pkg.Registry.update(regdir)
     regpath, regname = getregistrypath(regdir)
 
     # load registry & package config
