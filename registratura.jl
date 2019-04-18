@@ -391,7 +391,7 @@ function addurl(regdir::String, pkgurl::String)
     # clone to tempdir first
     tmp = mktempdir()
     Base.shred!(LibGit2.CachedCredentials()) do creds
-        LibGit2.with(Pkg.GitTools.clone(pkgurl, tmp; header = "Pkg from $(repr(url))", credentials = creds)) do repo
+        LibGit2.with(Pkg.GitTools.clone(pkgurl, tmp; header = "Pkg from $(repr(pkgurl))", credentials = creds)) do repo
         end
     end
     
