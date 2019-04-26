@@ -331,7 +331,7 @@ function saveregistryfile(path, reg)
     packages = reg[PKGS]
     data = 
     regdata = RegistryData(name, UUID(uuid), repo, description, packages, Dict())
-    writeto(io->TOML.print(io, reg), path)
+    writeto(io->TOML.print(io, regdata), path)
 end
 
 function init(path::String)
