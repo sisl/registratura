@@ -11,8 +11,9 @@ import LibGit2
 import UUIDs
 import Pkg.Types: VersionRange, VersionBound
 
+include(joinpath(@__DIR__, "registry_parsing.jl"))
+
 const NAME = "name"
-const UUID = "uuid"
 const REPO = "repo"
 const DEPS = "deps"
 const PKGS = "packages"
@@ -51,8 +52,8 @@ function genpackage(pkgdir::String, project::Dict{T,Any}) where T<:AbstractStrin
     else
         basename(PKGSRC)
     end
-    package[UUID] = if haskey(project, UUID)
-        project[UUID]
+    package["uuid"] = if haskey(project, "uuid")
+        project["uuid"]
     else
         string(UUIDs.uuid1())
     end
@@ -322,7 +323,16 @@ function writeto(f, fpath)
     end
 end
 
-saveregistryfile(path, reg) = writeto(io->TOML.print(io, reg, sorted=true), path)
+function saveregistryfile(path, reg)
+    name = reg[NAME]
+    uuid = reg["uuid"]
+    repo = reg[REPO]
+    description = reg["description"]
+    packages = reg[PKGS]
+    data = 
+    regdata = RegistryData(name, UUID(uuid), repo, description, packages, Dict())
+    writeto(io->TOML.print(io, reg), path)
+end
 
 function init(path::String)
     regpath, regname = getregistrypath(path)
@@ -330,7 +340,7 @@ function init(path::String)
     if !isregistrydir(regpath)
         # input registry properties
         reg = Dict{String, Any}()
-        reg[UUID] = UUIDs.uuid4()
+        reg["uuid"] = UUIDs.uuid4()
         print("Enter registry name$(isempty(regname) ? ":" : " ["*regname*"]:") ")
         tmpname = readline(stdin)
         reg[NAME] = isempty(tmpname) ? regname : tmpname
@@ -410,7 +420,7 @@ function addpkg(regdir::String, pkgdir::String)
     reg = readregistry(regpath)
     prj = readproject(pkgdir)
     prjname = prj[NAME]
-    prjid = prj[UUID]
+    prjid = prj["uuid"]
 
     # get package versions
     vers = genversions(pkgdir)
@@ -428,7 +438,7 @@ function addpkg(regdir::String, pkgdir::String)
     writeto(joinpath(prjpath, "Package.toml")) do io
         prjdesc = Dict{String, Any}()
         prjdesc[NAME] = prjname
-        prjdesc[UUID] = prjid
+        prjdesc["uuid"] = prjid
 
         repo = LibGit2.GitRepo(pkgdir)
         try
