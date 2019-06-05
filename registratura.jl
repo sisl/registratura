@@ -425,7 +425,7 @@ function addpkg(regdir::String, pkgdir::String)
     # get package versions
     vers = genversions(pkgdir)
     if length(vers) == 0
-        @info "Package $prjname doesn't have versions."
+        @info "Package $prjname doesn't have any version git tags."
         return
     end
 
